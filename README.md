@@ -576,7 +576,6 @@ Provide feedback on assistant responses.
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?style=flat&logo=linkedin)](https://linkedin.com/in/hemanth-reddy-1408)
 [![Email](https://img.shields.io/badge/Email-Contact-D14836?style=flat&logo=gmail)](mailto:your.email@example.com)
 
-*Full-stack developer passionate about AI in healthcare*
 
 </div>
 
@@ -607,6 +606,5 @@ Having issues or questions? We're here to help!
 
 **⭐ Star this repository if you find it helpful!**
 
-Made with ❤️ and 🤖 by the MedAssist AI Team
 
 </div>
