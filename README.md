@@ -33,21 +33,247 @@ MedAssist AI is a sophisticated healthcare assistant that combines the power of:
 
 ## 🏗️ System Architecture
 
+### Complete System Flow
+
 ```mermaid
-graph TD
-    A[User Query] --> B[LangGraph Agent]
-    B --> C[Planner Node]
-    C --> D[Tool Selection]
-    D --> E[PubMed Search]
-    D --> F[Wikipedia Search]
-    D --> G[Tavily Search]
-    E --> H[Response Finalizer]
-    F --> H
-    G --> H
-    H --> I[Memory Storage]
-    I --> J[User Response]
-    J --> K[Feedback Collection]
-    K --> L[MongoDB Storage]
+graph TB
+    %% User Interface Layer
+    subgraph "Frontend Layer"
+        UI[🖥️ Streamlit UI]
+        AUTH[🔐 Authentication Page]
+        CHAT[💬 Chat Interface]
+        FEEDBACK[📝 Feedback Form]
+        HISTORY[📋 History View]
+    end
+
+    %% API Gateway
+    subgraph "API Gateway"
+        API[🚀 FastAPI Server]
+        JWT[🔑 JWT Middleware]
+        ROUTES[📡 API Routes]
+    end
+
+    %% Backend Processing
+    subgraph "Backend Processing"
+        AGENT[🤖 LangGraph Agent]
+        PLANNER[🧠 Query Planner]
+        TOOLS[🔧 Tool Selector]
+        FINALIZER[✨ Response Finalizer]
+    end
+
+    %% External Services
+    subgraph "External APIs"
+        GROQ[⚡ Groq LLM API]
+        PUBMED[📚 PubMed API]
+        WIKI[📖 Wikipedia API]
+        TAVILY[🔍 Tavily Search API]
+    end
+
+    %% Database Layer
+    subgraph "Database Layer"
+        MONGO[🍃 MongoDB]
+        MEMORY[🧠 Memory Collection]
+        FEEDBACK_DB[📊 Feedback Collection]
+        USERS[👥 Users Collection]
+    end
+
+    %% User Flow
+    USER[👤 User] --> UI
+    UI --> AUTH
+    AUTH --> |Login/Register| API
+    API --> JWT
+    JWT --> |Verified| ROUTES
+    
+    %% Chat Flow
+    UI --> CHAT
+    CHAT --> |Query| API
+    API --> |Process Query| AGENT
+    AGENT --> PLANNER
+    PLANNER --> |Plan Execution| TOOLS
+    
+    %% Tool Execution
+    TOOLS --> |Medical Query| PUBMED
+    TOOLS --> |General Knowledge| WIKI
+    TOOLS --> |Web Search| TAVILY
+    TOOLS --> |LLM Processing| GROQ
+    
+    %% Response Processing
+    PUBMED --> FINALIZER
+    WIKI --> FINALIZER
+    TAVILY --> FINALIZER
+    GROQ --> FINALIZER
+    
+    %% Memory and Response
+    FINALIZER --> |Store Context| MEMORY
+    FINALIZER --> |Response| API
+    API --> |JSON Response| CHAT
+    
+    %% Feedback Loop
+    CHAT --> |User Feedback| FEEDBACK
+    FEEDBACK --> |Submit| API
+    API --> |Store Feedback| FEEDBACK_DB
+    
+    %% History Access
+    CHAT --> |View History| HISTORY
+    HISTORY --> |Request| API
+    API --> |Retrieve| MEMORY
+    MEMORY --> |Session Data| HISTORY
+    
+    %% Database Connections
+    API --> MONGO
+    MONGO --> MEMORY
+    MONGO --> FEEDBACK_DB
+    MONGO --> USERS
+
+    %% Styling
+    classDef frontend fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000
+    classDef backend fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
+    classDef external fill:#e8f5e8,stroke:#388e3c,stroke-width:2px,color:#000
+    classDef database fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
+    classDef user fill:#ffebee,stroke:#d32f2f,stroke-width:3px,color:#000
+
+    class UI,AUTH,CHAT,FEEDBACK,HISTORY frontend
+    class API,JWT,ROUTES,AGENT,PLANNER,TOOLS,FINALIZER backend
+    class GROQ,PUBMED,WIKI,TAVILY external
+    class MONGO,MEMORY,FEEDBACK_DB,USERS database
+    class USER user
+```
+
+### Detailed Component Architecture
+
+```mermaid
+graph LR
+    subgraph "🎨 Frontend Layer"
+        subgraph "Streamlit Components"
+            AUTH_UI[🔐 Authentication]
+            CHAT_UI[💬 Chat Interface]
+            FEEDBACK_UI[📝 Feedback Form]
+            HISTORY_UI[📋 History View]
+        end
+    end
+
+    subgraph "🔌 API Layer"
+        subgraph "FastAPI Routes"
+            AUTH_API[🔑 /auth/*]
+            QUERY_API[💬 /api/query]
+            FEEDBACK_API[📊 /api/feedback]
+            HISTORY_API[📋 /api/history]
+        end
+        
+        subgraph "Middleware"
+            JWT_MIDDLEWARE[🔐 JWT Auth]
+            RATE_LIMITER[⚡ Rate Limiter]
+            CORS_HANDLER[🌐 CORS Handler]
+        end
+    end
+
+    subgraph "🤖 Agent Layer"
+        subgraph "LangGraph Workflow"
+            PLANNER_NODE[🧠 Planner Node]
+            TOOL_NODE[🔧 Tool Execution Node]
+            FINALIZER_NODE[✨ Response Finalizer]
+            MEMORY_NODE[💾 Memory Manager]
+        end
+    end
+
+    subgraph "🔧 Tools Layer"
+        MEDICAL_TOOL[🏥 Medical Knowledge Tool]
+        SEARCH_TOOL[🔍 Web Search Tool]
+        WIKI_TOOL[📖 Wikipedia Tool]
+        MEMORY_TOOL[🧠 Memory Retrieval Tool]
+    end
+
+    subgraph "🌐 External Services"
+        GROQ_API[⚡ Groq LLM API]
+        PUBMED_API[📚 PubMed API]
+        WIKI_API[📖 Wikipedia API]
+        TAVILY_API[🔍 Tavily Search API]
+    end
+
+    subgraph "🗄️ Database Layer"
+        MONGO_DB[(🍃 MongoDB)]
+        USER_COLLECTION[(👥 Users)]
+        MEMORY_COLLECTION[(🧠 Memory)]
+        FEEDBACK_COLLECTION[(📊 Feedback)]
+    end
+
+    %% Connections
+    AUTH_UI --> AUTH_API
+    CHAT_UI --> QUERY_API
+    FEEDBACK_UI --> FEEDBACK_API
+    HISTORY_UI --> HISTORY_API
+
+    QUERY_API --> JWT_MIDDLEWARE
+    JWT_MIDDLEWARE --> PLANNER_NODE
+    PLANNER_NODE --> TOOL_NODE
+    TOOL_NODE --> FINALIZER_NODE
+
+    TOOL_NODE --> MEDICAL_TOOL
+    TOOL_NODE --> SEARCH_TOOL
+    TOOL_NODE --> WIKI_TOOL
+    TOOL_NODE --> MEMORY_TOOL
+
+    MEDICAL_TOOL --> PUBMED_API
+    SEARCH_TOOL --> TAVILY_API
+    WIKI_TOOL --> WIKI_API
+    FINALIZER_NODE --> GROQ_API
+
+    MEMORY_NODE --> MEMORY_COLLECTION
+    FEEDBACK_API --> FEEDBACK_COLLECTION
+    AUTH_API --> USER_COLLECTION
+
+    %% Styling
+    classDef frontend fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000
+    classDef api fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
+    classDef agent fill:#e8f5e8,stroke:#388e3c,stroke-width:2px,color:#000
+    classDef external fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
+    classDef database fill:#ffebee,stroke:#d32f2f,stroke-width:2px,color:#000
+```
+
+### User Experience Flow
+
+```mermaid
+sequenceDiagram
+    participant User as 👤 User
+    participant UI as 🖥️ Streamlit UI
+    participant API as 🚀 FastAPI
+    participant Agent as 🤖 LangGraph Agent
+    participant Tools as 🔧 External Tools
+    participant DB as 🍃 MongoDB
+
+    Note over User,DB: Authentication Flow
+    User->>UI: Access Application
+    UI->>API: Login Request
+    API->>DB: Verify Credentials
+    DB-->>API: User Data
+    API-->>UI: JWT Token
+    UI-->>User: Welcome Dashboard
+
+    Note over User,DB: Query Processing Flow
+    User->>UI: Submit Medical Query
+    UI->>API: POST /api/query (with JWT)
+    API->>Agent: Process Query
+    
+    Agent->>Agent: Plan Execution
+    Agent->>Tools: Search Medical Literature
+    Tools-->>Agent: Research Results
+    Agent->>Tools: Search General Knowledge
+    Tools-->>Agent: Additional Context
+    Agent->>Tools: Generate Response
+    Tools-->>Agent: LLM Response
+    
+    Agent->>DB: Store Conversation
+    Agent-->>API: Formatted Response
+    API-->>UI: JSON Response
+    UI-->>User: Display Answer
+
+    Note over User,DB: Feedback Loop
+    User->>UI: Provide Feedback
+    UI->>API: POST /api/feedback
+    API->>DB: Store Feedback
+    DB-->>API: Confirmation
+    API-->>UI: Success Message
+    UI-->>User: Thank You Message
 ```
 
 ---
@@ -340,68 +566,6 @@ Provide feedback on assistant responses.
 
 ---
 
-## 🤝 Contributing
-
-We welcome contributions! Here's how to get started:
-
-### Development Setup
-
-```bash
-# Fork the repository
-git fork https://github.com/HemanthReddy-1408/medassist-ai.git
-
-# Create feature branch
-git checkout -b feature/amazing-feature
-
-# Make changes and commit
-git commit -m "Add amazing feature"
-
-# Push to branch
-git push origin feature/amazing-feature
-
-# Create Pull Request
-```
-
-### Contribution Guidelines
-
-1. **Code Style**: Follow PEP 8 standards
-2. **Documentation**: Update README and docstrings
-3. **Testing**: Add tests for new features
-4. **Commits**: Use conventional commit messages
-5. **Issues**: Use GitHub issues for bug reports
-
-### Areas for Contribution
-
-- 🐛 Bug fixes and optimizations
-- 📚 Documentation improvements
-- 🧪 Test coverage expansion
-- 🎨 UI/UX enhancements
-- 🔧 New tool integrations
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-```
-MIT License
-
-Copyright (c) 2025 MedAssist AI
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-```
-
----
-
 ## 👨‍💻 Author
 
 <div align="center">
@@ -412,7 +576,7 @@ copies or substantial portions of the Software.
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?style=flat&logo=linkedin)](https://linkedin.com/in/hemanth-reddy-1408)
 [![Email](https://img.shields.io/badge/Email-Contact-D14836?style=flat&logo=gmail)](mailto:your.email@example.com)
 
-*Full-stack developer passionate about AI in healthcare*
+
 
 </div>
 
@@ -442,6 +606,5 @@ Having issues or questions? We're here to help!
 <div align="center">
 
 **⭐ Star this repository if you find it helpful!**
-
 
 </div>
