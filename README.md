@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green.svg)
 ![LangGraph](https://img.shields.io/badge/LangGraph-latest-orange.svg)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+
 [![GitHub stars](https://img.shields.io/github/stars/HemanthReddy-1408/medassist-ai.svg)](https://github.com/HemanthReddy-1408/medassist-ai/stargazers)
 
 **An intelligent, multi-tool medical assistant built using LangGraph, LangChain, and Groq**
@@ -576,7 +576,7 @@ Provide feedback on assistant responses.
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?style=flat&logo=linkedin)](https://linkedin.com/in/hemanth-reddy-1408)
 [![Email](https://img.shields.io/badge/Email-Contact-D14836?style=flat&logo=gmail)](mailto:your.email@example.com)
 
-
+*Full-stack developer passionate about AI in healthcare*
 
 </div>
 
@@ -606,5 +606,7 @@ Having issues or questions? We're here to help!
 <div align="center">
 
 **⭐ Star this repository if you find it helpful!**
+
+Made with ❤️ and 🤖 by the MedAssist AI Team
 
 </div>
