@@ -595,10 +595,7 @@ Provide feedback on assistant responses.
 
 Having issues or questions? We're here to help!
 
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/HemanthReddy-1408/medassist-ai/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/HemanthReddy-1408/medassist-ai/discussions)
-- 📧 **Email**: [your.email@example.com](mailto:your.email@example.com)
-- 📚 **Documentation**: [Wiki](https://github.com/HemanthReddy-1408/medassist-ai/wiki)
+- 📧 **Email**: [your.email@example.com](mailto:hemanth984849@gmail.com)
 
 ---
 
