@@ -573,8 +573,8 @@ Provide feedback on assistant responses.
 **Hemanth Reddy**
 
 [![GitHub](https://img.shields.io/badge/GitHub-@HemanthReddy--1408-181717?style=flat&logo=github)](https://github.com/HemanthReddy-1408)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?style=flat&logo=linkedin)](https://linkedin.com/in/hemanth-reddy-1408)
-[![Email](https://img.shields.io/badge/Email-Contact-D14836?style=flat&logo=gmail)](mailto:your.email@example.com)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?style=flat&logo=linkedin)](https://www.linkedin.com/in/hemanth-reddy-432237333/)
+[![Email](https://img.shields.io/badge/Email-Contact-D14836?style=flat&logo=gmail)](mailto:hemanth984849@gmail.com)
 
 
 </div>
@@ -595,7 +595,7 @@ Provide feedback on assistant responses.
 
 Having issues or questions? We're here to help!
 
-- 📧 **Email**: [your.email@example.com](mailto:hemanth984849@gmail.com)
+- 📧 **Email**: [hemanth984849@gmail.com](mailto:hemanth984849@gmail.com)
 
 ---
 
