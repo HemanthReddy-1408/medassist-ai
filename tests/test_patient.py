@@ -15,7 +15,12 @@ from medassist.gate.interactions import (
     find_conflicts,
     find_drug_conflicts,
 )
-from medassist.patient.normalize import Medication, classes_of, mentions_drug, normalize, to_ingredient
+from medassist.patient.normalize import (
+    classes_of,
+    mentions_drug,
+    normalize,
+    to_ingredient,
+)
 
 DOC = DocumentId.new()
 
