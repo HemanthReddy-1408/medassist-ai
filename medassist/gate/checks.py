@@ -16,8 +16,8 @@ from medassist.core.ids import ChunkId
 from medassist.core.models import Chunk, Claim, PatientProfile
 from medassist.gate.decisions import CheckOutcome
 from medassist.gate.interactions import TABLE_VERSION, find_conflicts
-from medassist.patient.normalize import normalize
 from medassist.gate.quantities import find_unmatched
+from medassist.patient.normalize import normalize
 
 
 @dataclass
