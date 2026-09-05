@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push: { branches: [main, v2-multi-agent] }
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      # The offline suite must pass with no API key and no network. A suite
+      # that needs credentials is a suite that silently stops running.
+      - run: ruff check medassist tests
+      - run: pytest tests/ -q

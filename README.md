@@ -1,607 +1,241 @@
-# 🩺 MedAssist AI
+# MedAssist X
 
-<div align="center">
+**Serving-time admission control for clinical answers.**
 
-![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green.svg)
-![LangGraph](https://img.shields.io/badge/LangGraph-latest-orange.svg)
+A multi-agent system that produces answers, and a **release gate** that decides,
+per request and in-band, whether each one may reach the person who asked.
 
-[![GitHub stars](https://img.shields.io/github/stars/HemanthReddy-1408/medassist-ai.svg)](https://github.com/HemanthReddy-1408/medassist-ai/stargazers)
-
-**An intelligent, multi-tool medical assistant built using LangGraph, LangChain, and Groq**
-
-*Leverages RAG, memory, and human-in-the-loop feedback for safe and insightful responses to medical queries*
-
-[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [API](#-api) • [Contributing](#-contributing)
-
-</div>
+> **This system is not clinically reliable and is not intended to be.** It
+> cannot replace a clinician. What it *is*: a demonstration that an LLM answer
+> can be held to a decision procedure rather than trusted.
 
 ---
 
-## 🌟 Overview
+## The constraint everything follows from
 
-MedAssist AI is a sophisticated healthcare assistant that combines the power of:
-- **🧠 Agentic AI** with LangGraph workflow orchestration
-- **🔍 Multi-source RAG** for evidence-based responses
-- **💾 Persistent memory** for contextual conversations
-- **🔐 Secure authentication** with JWT tokens
-- **💬 Interactive feedback** system for continuous improvement
+> **At serving time there is no gold label, and there is no second chance.**
 
-> **⚠️ Important Disclaimer:** MedAssist AI is an experimental system designed for educational and research purposes. It is **not a substitute** for professional medical advice, diagnosis, or treatment. Always consult qualified healthcare professionals for medical concerns.
+An evaluation harness compares an answer against a known-correct one, offline,
+with unlimited time. The gate has neither. It must decide whether *this* answer
+may reach *this* person using only the answer, the retrieved context, and the
+patient's own record — before anything is shown.
 
----
+So every check is **reference-free** (none may require knowing the right
+answer) and **affordable** (all of them run before the user sees a token).
 
-## 🏗️ System Architecture
+## What the gate actually does
 
-### Complete System Flow
+Four checks, cheapest first. A claim removed by check 2 never reaches the model
+call, so the expensive stage runs on a shrinking set.
 
-```mermaid
-graph TB
-    %% User Interface Layer
-    subgraph "Frontend Layer"
-        UI[🖥️ Streamlit UI]
-        AUTH[🔐 Authentication Page]
-        CHAT[💬 Chat Interface]
-        FEEDBACK[📝 Feedback Form]
-        HISTORY[📋 History View]
-    end
-
-    %% API Gateway
-    subgraph "API Gateway"
-        API[🚀 FastAPI Server]
-        JWT[🔑 JWT Middleware]
-        ROUTES[📡 API Routes]
-    end
-
-    %% Backend Processing
-    subgraph "Backend Processing"
-        AGENT[🤖 LangGraph Agent]
-        PLANNER[🧠 Query Planner]
-        TOOLS[🔧 Tool Selector]
-        FINALIZER[✨ Response Finalizer]
-    end
-
-    %% External Services
-    subgraph "External APIs"
-        GROQ[⚡ Groq LLM API]
-        PUBMED[📚 PubMed API]
-        WIKI[📖 Wikipedia API]
-        TAVILY[🔍 Tavily Search API]
-    end
-
-    %% Database Layer
-    subgraph "Database Layer"
-        MONGO[🍃 MongoDB]
-        MEMORY[🧠 Memory Collection]
-        FEEDBACK_DB[📊 Feedback Collection]
-        USERS[👥 Users Collection]
-    end
-
-    %% User Flow
-    USER[👤 User] --> UI
-    UI --> AUTH
-    AUTH --> |Login/Register| API
-    API --> JWT
-    JWT --> |Verified| ROUTES
-    
-    %% Chat Flow
-    UI --> CHAT
-    CHAT --> |Query| API
-    API --> |Process Query| AGENT
-    AGENT --> PLANNER
-    PLANNER --> |Plan Execution| TOOLS
-    
-    %% Tool Execution
-    TOOLS --> |Medical Query| PUBMED
-    TOOLS --> |General Knowledge| WIKI
-    TOOLS --> |Web Search| TAVILY
-    TOOLS --> |LLM Processing| GROQ
-    
-    %% Response Processing
-    PUBMED --> FINALIZER
-    WIKI --> FINALIZER
-    TAVILY --> FINALIZER
-    GROQ --> FINALIZER
-    
-    %% Memory and Response
-    FINALIZER --> |Store Context| MEMORY
-    FINALIZER --> |Response| API
-    API --> |JSON Response| CHAT
-    
-    %% Feedback Loop
-    CHAT --> |User Feedback| FEEDBACK
-    FEEDBACK --> |Submit| API
-    API --> |Store Feedback| FEEDBACK_DB
-    
-    %% History Access
-    CHAT --> |View History| HISTORY
-    HISTORY --> |Request| API
-    API --> |Retrieve| MEMORY
-    MEMORY --> |Session Data| HISTORY
-    
-    %% Database Connections
-    API --> MONGO
-    MONGO --> MEMORY
-    MONGO --> FEEDBACK_DB
-    MONGO --> USERS
-
-    %% Styling
-    classDef frontend fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000
-    classDef backend fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
-    classDef external fill:#e8f5e8,stroke:#388e3c,stroke-width:2px,color:#000
-    classDef database fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
-    classDef user fill:#ffebee,stroke:#d32f2f,stroke-width:3px,color:#000
-
-    class UI,AUTH,CHAT,FEEDBACK,HISTORY frontend
-    class API,JWT,ROUTES,AGENT,PLANNER,TOOLS,FINALIZER backend
-    class GROQ,PUBMED,WIKI,TAVILY external
-    class MONGO,MEMORY,FEEDBACK_DB,USERS database
-    class USER user
+```
+  claims
+    ├─ 1. citation resolution   ~0.02 ms   handle indexes nothing  → REMOVE
+    ├─ 2. numeric grounding     ~0.30 ms   digits not in a citation → REMOVE
+    ├─ 3. relational safety     ~3.00 ms   wrong for this patient  → QUALIFY / REMOVE
+    └─ 4. entailment          ~1400 ms   cited source disagrees   → REMOVE + BLOCK
+  ↓
+  RELEASE · RELEASE_WITH_CAVEAT · ABSTAIN · BLOCK · ESCALATE
 ```
 
-### Detailed Component Architecture
+Measured on a live run against a real corpus — see `make demo-gate`.
 
-```mermaid
-graph LR
-    subgraph "🎨 Frontend Layer"
-        subgraph "Streamlit Components"
-            AUTH_UI[🔐 Authentication]
-            CHAT_UI[💬 Chat Interface]
-            FEEDBACK_UI[📝 Feedback Form]
-            HISTORY_UI[📋 History View]
-        end
-    end
+### Check 2 beats the expensive one
 
-    subgraph "🔌 API Layer"
-        subgraph "FastAPI Routes"
-            AUTH_API[🔑 /auth/*]
-            QUERY_API[💬 /api/query]
-            FEEDBACK_API[📊 /api/feedback]
-            HISTORY_API[📋 /api/history]
-        end
-        
-        subgraph "Middleware"
-            JWT_MIDDLEWARE[🔐 JWT Auth]
-            RATE_LIMITER[⚡ Rate Limiter]
-            CORS_HANDLER[🌐 CORS Handler]
-        end
-    end
-
-    subgraph "🤖 Agent Layer"
-        subgraph "LangGraph Workflow"
-            PLANNER_NODE[🧠 Planner Node]
-            TOOL_NODE[🔧 Tool Execution Node]
-            FINALIZER_NODE[✨ Response Finalizer]
-            MEMORY_NODE[💾 Memory Manager]
-        end
-    end
-
-    subgraph "🔧 Tools Layer"
-        MEDICAL_TOOL[🏥 Medical Knowledge Tool]
-        SEARCH_TOOL[🔍 Web Search Tool]
-        WIKI_TOOL[📖 Wikipedia Tool]
-        MEMORY_TOOL[🧠 Memory Retrieval Tool]
-    end
-
-    subgraph "🌐 External Services"
-        GROQ_API[⚡ Groq LLM API]
-        PUBMED_API[📚 PubMed API]
-        WIKI_API[📖 Wikipedia API]
-        TAVILY_API[🔍 Tavily Search API]
-    end
-
-    subgraph "🗄️ Database Layer"
-        MONGO_DB[(🍃 MongoDB)]
-        USER_COLLECTION[(👥 Users)]
-        MEMORY_COLLECTION[(🧠 Memory)]
-        FEEDBACK_COLLECTION[(📊 Feedback)]
-    end
-
-    %% Connections
-    AUTH_UI --> AUTH_API
-    CHAT_UI --> QUERY_API
-    FEEDBACK_UI --> FEEDBACK_API
-    HISTORY_UI --> HISTORY_API
-
-    QUERY_API --> JWT_MIDDLEWARE
-    JWT_MIDDLEWARE --> PLANNER_NODE
-    PLANNER_NODE --> TOOL_NODE
-    TOOL_NODE --> FINALIZER_NODE
-
-    TOOL_NODE --> MEDICAL_TOOL
-    TOOL_NODE --> SEARCH_TOOL
-    TOOL_NODE --> WIKI_TOOL
-    TOOL_NODE --> MEMORY_TOOL
-
-    MEDICAL_TOOL --> PUBMED_API
-    SEARCH_TOOL --> TAVILY_API
-    WIKI_TOOL --> WIKI_API
-    FINALIZER_NODE --> GROQ_API
-
-    MEMORY_NODE --> MEMORY_COLLECTION
-    FEEDBACK_API --> FEEDBACK_COLLECTION
-    AUTH_API --> USER_COLLECTION
-
-    %% Styling
-    classDef frontend fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000
-    classDef api fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
-    classDef agent fill:#e8f5e8,stroke:#388e3c,stroke-width:2px,color:#000
-    classDef external fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
-    classDef database fill:#ffebee,stroke:#d32f2f,stroke-width:2px,color:#000
+```
+claim   "The recommended starting dose is 800 mg twice daily."
+cites   [C1] → "The recommended starting dose is 500 mg twice daily."
+verdict REMOVE — numeric_grounding: 800 mg appears in no cited span   (0.33 ms)
 ```
 
-### User Experience Flow
+An LLM judge asked "is this consistent?" frequently accepts that — the sentence
+is otherwise identical and both numbers are the same kind of thing. Arithmetic
+does not, costs nothing, and cannot be argued with. Meanwhile `2.5 g` and
+`2500 mg` *do* match, because units are normalized before comparison.
 
-```mermaid
-sequenceDiagram
-    participant User as 👤 User
-    participant UI as 🖥️ Streamlit UI
-    participant API as 🚀 FastAPI
-    participant Agent as 🤖 LangGraph Agent
-    participant Tools as 🔧 External Tools
-    participant DB as 🍃 MongoDB
+### Check 3 is the one nothing else catches
 
-    Note over User,DB: Authentication Flow
-    User->>UI: Access Application
-    UI->>API: Login Request
-    API->>DB: Verify Credentials
-    DB-->>API: User Data
-    API-->>UI: JWT Token
-    UI-->>User: Welcome Dashboard
-
-    Note over User,DB: Query Processing Flow
-    User->>UI: Submit Medical Query
-    UI->>API: POST /api/query (with JWT)
-    API->>Agent: Process Query
-    
-    Agent->>Agent: Plan Execution
-    Agent->>Tools: Search Medical Literature
-    Tools-->>Agent: Research Results
-    Agent->>Tools: Search General Knowledge
-    Tools-->>Agent: Additional Context
-    Agent->>Tools: Generate Response
-    Tools-->>Agent: LLM Response
-    
-    Agent->>DB: Store Conversation
-    Agent-->>API: Formatted Response
-    API-->>UI: JSON Response
-    UI-->>User: Display Answer
-
-    Note over User,DB: Feedback Loop
-    User->>UI: Provide Feedback
-    UI->>API: POST /api/feedback
-    API->>DB: Store Feedback
-    DB-->>API: Confirmation
-    API-->>UI: Success Message
-    UI-->>User: Thank You Message
 ```
+claim    "Increase potassium intake."          ← true, well-cited, grounded
+patient  medications: [warfarin, lisinopril]
+verdict  REMOVE — hyperkalaemia risk with an ACE inhibitor   (3.03 ms)
+```
+
+Every groundedness and faithfulness metric passes this claim, because every one
+of them stops at the corpus. Correctness here is **relational** — it holds
+between the answer and the patient's record. That is why the gate takes the
+patient record as an input rather than treating personalization as a prompt
+detail, and why the interaction table is curated, cited data rather than model
+knowledge.
+
+Rules are keyed on drug *classes*, so one grapefruit rule covers every CYP3A4
+substrate — and deliberately does not cover rosuvastatin, which is not one. A
+rule naming simvastatin protects nobody on lovastatin though the mechanism is
+identical, which is the kind of gap that looks like coverage until someone is
+harmed by it.
+
+### Everything fails closed
+
+| Failure | Behaviour |
+|---|---|
+| Judge unreachable, or skips a claim | `ABSTAIN` — unverified is not verified |
+| Retrieval found nothing | `ABSTAIN`, naming the gap |
+| Gate latency budget exhausted | `ABSTAIN` |
+| Output truncated by a reasoning preamble | `ABSTAIN`, diagnosed as budget exhaustion |
+
+A safety component that disables itself under load is not a safety component.
 
 ---
 
-## ✨ Features
+## What this is *not*
 
-### Core Capabilities
-- 🧠 **Agentic LangGraph Flow** - Intelligent planning, tool execution, and response finalization
-- 🔍 **Multi-source RAG** - Retrieval from PubMed, Wikipedia, and Tavily for comprehensive answers
-- 🧵 **Session-based Memory** - Persistent conversation context using `thread_id` and MongoDB
-- 💬 **Feedback System** - Like/dislike ratings with optional comments for model improvement
-- 🔐 **JWT Authentication** - Secure login and access control
-- 📊 **Real-time UI** - Interactive Streamlit interface for seamless user experience
-- 🗂️ **RESTful API** - FastAPI backend for easy integration
+Not an evaluation platform, and the distinction is deliberate.
 
-### Technical Features
-- **Groq-powered LLM** - Fast inference with Gemma-2B model
-- **MongoDB Integration** - Scalable document storage for memory and feedback
-- **Modular Architecture** - Clean separation of concerns for maintainability
-- **Error Handling** - Robust error management and logging
-- **Responsive Design** - Mobile-friendly Streamlit interface
+| | An evaluation platform | **MedAssist X** |
+|---|---|---|
+| Question | *Did this change help?* | *May this answer be released?* |
+| When | Offline, batch | **In-band, per request** |
+| Gold labels | Always available | **Never available** |
+| Method | Comparative inference across arms | Reference-free verification + gating |
+| Verdict about | A **change** | A specific **answer, for a specific person** |
+
+Paired significance tests, multiple-comparison correction, cross-arm regression
+gates and experiment tracking are **out of scope on purpose** — they answer
+questions about *changes*, offline, with labels. This repository exports
+decision records for such a platform to consume ([§10.3](docs/spec/10-decision-audit.md))
+and stops there.
 
 ---
 
-## 🚀 Installation
+## Status — what is actually built
 
-### Prerequisites
-- Python 3.8 or higher
-- MongoDB instance (local or cloud)
-- API keys for Groq and Tavily
+Every row below is implemented and tested. The repository this replaced
+advertised "Multi-source RAG" while `pubmed_node` returned the string
+`"Clinical data lookup not implemented yet."` That is the pattern this project
+is organised against.
 
-### Quick Setup
+| Subsystem | Lines | Tests |
+|---|---:|---:|
+| Domain model — 15 closed enums, monotonic ULIDs, model-level invariants | 858 | 26 |
+| Model gateway — retries, disk cache, cost, JSON fallback, adaptive budget | 354 | 21 |
+| Corpus — 3 live scrapers, section offsets, content-addressed snapshots | 576 | 22 |
+| Retrieval — chunking, BM25 + dense, RRF, MMR rerank, full trace | 866 | 29 |
+| **Release gate** — 6 checks, cascade, fail-closed, per-check attribution | 1,319 | 45 |
+| Patient model — drug classes, brand resolution, interaction rules | 183 | 25 |
+| Clinical guards — triage, injection, PII, deny-by-default policy | 376 | 29 |
+| Capabilities + orchestration — registry, validated DAG, parallel executor | 687 | 30 |
+| Reports — parsing, reference intervals, findings, trends | 404 | 31 |
+| Confidence — six factors, ECE/Brier, risk–coverage, threshold selection | 381 | 36 |
+| **Longitudinal memory** — shelf life, continuity, confirmations | 446 | 27 |
+| Red team — 15 attacks, 10 classes, scored with intervals | 475 | 29 |
+| Decision records + serving — pipeline, API, CLI, UI | 848 | 22 |
+
+**8,274 lines of implementation · 3,367 of tests · 1,751 of specification.**
+**448 tests, 2.4s, no network or API key required.**
+
+---
+
+## Memory across visits
+
+> A profile uploads a report showing haemoglobin low at 9.1 g/dL. Five months
+> later, the same profile uploads a lipid panel with no haemoglobin on it.
+
+Forgetting the finding loses something the person is still living with.
+Assuming it still holds means reasoning from a five-month-old value. So:
+
+```
+Hemoglobin: 9.1 (2026-04-08) -> not measured   [unchecked]
+HbA1c:      7.4 (2026-04-08) -> 8.2            [worsening]
+
+Before I use your history, please confirm:
+  - The most recent Hemoglobin I have is 9.1 g/dL (low) as of 2026-04-08,
+    which is now 150 days old. Should I still treat that as current?
+```
+
+Shelf life is a clinical property, not a storage policy — INR expires in 30
+days, a chronic diagnosis in two years. Questions are capped at three and
+ordered by severity, because a system that opens with nine gets none answered.
+Details in [§13](docs/spec/13-longitudinal-memory.md).
+
+---
+
+## Adversarial results
+
+15 attacks across 10 classes, each with a machine-checkable expected behaviour.
+The judge is **scripted to say "supported" for every attack**, so any defence
+that holds was held by deterministic code with no help from the model.
+
+```
+defended 15/15 (100%, 95% CI 80%-100%)
+over-refusals: 0
+```
+
+The interval is doing honest work: 15 cases do not establish much, and a point
+estimate would imply precision it does not have. Two attacks failed on first
+run and both were real bugs — a 10,000-character "claim" released under a
+caveat, and an authority-spoofing payload in a retrieved chunk that produced a
+diagnosis. Both fixed, both now regression tests.
+
+`make redteam` reproduces it.
+
+---
+
+## Corpus
+
+Three public sources, all verified live. Not a general web crawl: each is
+stable, citable, dated, and licensed for this use — without which conflict
+resolution and temporal reasoning are impossible and citations unverifiable.
+
+| Source | Yields | Authority |
+|---|---|---:|
+| openFDA drug labels | Structured Product Labels, 16 clinical sections | 3 |
+| PubMed (E-utilities) | Abstracts with structured section labels | 2 |
+| MedlinePlus | NLM consumer health topics | 2 |
+
+Sections are carried as **character offsets**, not inferred later. This is
+load-bearing: the dosage guard requires a numeric dose to cite a chunk from an
+FDA label's `dosage_and_administration` section, and recovering that by
+re-parsing prose would be guesswork on the claim where guessing is least
+acceptable.
+
+Snapshots are **content-addressed and re-verified on read.** A metric is
+meaningless without the corpus it was measured against — "recall rose from 0.61
+to 0.74" may only record that someone re-scraped PubMed.
+
+---
+
+## Quick start
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/HemanthReddy-1408/medassist-ai.git
-cd medassist-ai
-
-# 2. Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Configure environment variables
-cp .env.example .env
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env          # add a Groq (or OpenAI-compatible) key
+make test                     # 448 tests, offline, no API key
+make redteam                  # the adversarial suite
+make demo                     # live: scrape → index → retrieve, with the trace
+make demo-gate                # live: generate claims → run the gate
+make serve                    # HTTP API on :8000
+make ui                       # Streamlit, with the evidence pane
 ```
 
-### Environment Configuration
-
-Edit `.env` file with your credentials:
-
-```env
-# LLM Configuration
-GROQ_API_KEY=your_groq_api_key_here
-
-# Database
-MONGODB_URI=mongodb://localhost:27017/medassist
-
-# Authentication
-JWT_SECRET=your_super_secure_jwt_secret_key
-
-# Search APIs
-TAVILY_API_KEY=your_tavily_api_key_here
-
-# Optional: Logging
-LOG_LEVEL=INFO
-```
-
-### Running the Application
-
-```bash
-# Terminal 1: Start FastAPI backend
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-
-# Terminal 2: Start Streamlit frontend
-streamlit run streamlit_ui/app.py --server.port 8501
-```
-
-The application will be available at:
-- **Frontend**: http://localhost:8501
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
-
----
-
-## 📁 Project Structure
-
-```
-medassist-ai/
-│
-├── 📁 app/                    # LangGraph agent logic
-│   ├── 📁 agent/
-│   │   ├── graph.py          # LangGraph workflow builder
-│   │   ├── state.py          # State schema definitions
-│   │   └── 📁 nodes/         # Individual workflow nodes
-│   │       ├── planner.py    # Query planning logic
-│   │       ├── tools.py      # RAG tool implementations
-│   │       └── finalizer.py  # Response finalization
-│   └── llm.py                # Groq LLM configuration
-│
-├── 📁 backend/               # FastAPI backend
-│   ├── 📁 api/
-│   │   ├── routes.py         # API endpoints
-│   │   └── auth.py           # JWT authentication
-│   ├── 📁 db/
-│   │   ├── models.py         # Database models
-│   │   └── mongo_client.py   # MongoDB connector
-│   └── main.py               # FastAPI application
-│
-├── 📁 streamlit_ui/          # Streamlit frontend
-│   ├── app.py                # Main application
-│   ├── chat.py               # Chat interface
-│   ├── auth.py               # Authentication UI
-│   └── feedback.py           # Feedback forms
-│
-├── 📁 outputs/               # Generated artifacts
-│   └── 📁 graph/             # System architecture diagrams
-│
-├── 📁 data/                  # Sample data and logs
-├── 📁 whisper_stt/           # Voice input (planned)
-├── 📄 requirements.txt       # Python dependencies
-├── 📄 .env.example          # Environment template
-└── 📄 README.md             # This file
-```
-
----
-
-## 🔧 Tech Stack
-
-| **Layer**     | **Technology**                               | **Purpose**                    |
-|---------------|---------------------------------------------|--------------------------------|
-| **Agent**     | LangGraph + LangChain                       | Workflow orchestration         |
-| **LLM**       | Gemma-2B via Groq API                      | Fast language processing       |
-| **RAG**       | PubMed, Wikipedia, Tavily Search           | Knowledge retrieval            |
-| **Frontend**  | Streamlit                                   | Interactive user interface     |
-| **Backend**   | FastAPI + JWT                               | API and authentication         |
-| **Database**  | MongoDB                                     | Memory and feedback storage    |
-| **Deployment** | Docker, Render, Railway (planned)          | Cloud deployment               |
-
----
-
-## 💡 Usage
-
-### Basic Query Flow
-
-1. **Authentication**: Sign up or log in through the Streamlit interface
-2. **Ask Questions**: Submit medical queries in natural language
-3. **Get Responses**: Receive evidence-based answers with source citations
-4. **Provide Feedback**: Rate responses and provide optional comments
-5. **Review History**: Access previous conversations and responses
-
-### Example Interaction
-
-```
-🧑 User: "I've been feeling tired even after sleeping, get headaches often, 
-         look pale, and feel breathless climbing stairs. What could be the reason?"
-
-🤖 MedAssist AI: "Based on your symptoms (fatigue, headaches, pallor, and 
-                  shortness of breath), this could indicate iron deficiency anemia. 
-                  These symptoms are commonly associated with reduced oxygen-carrying 
-                  capacity in your blood.
-                  
-                  I recommend:
-                  • Getting a Complete Blood Count (CBC) test
-                  • Checking iron levels and ferritin
-                  • Consulting with a healthcare professional for proper diagnosis
-                  
-                  Please see a doctor for proper evaluation and treatment."
-```
-
-### API Usage
-
-```python
-import requests
-
-# Authentication
-auth_response = requests.post("http://localhost:8000/auth/login", json={
-    "email": "user@example.com",
-    "password": "your_password"
-})
-token = auth_response.json()["access_token"]
-
-# Query the medical assistant
-headers = {"Authorization": f"Bearer {token}"}
-response = requests.post("http://localhost:8000/api/query", 
-                        headers=headers,
-                        json={"query": "What are the symptoms of diabetes?"})
-
-print(response.json())
-```
-
----
-
-## 🔐 Authentication & Security
-
-### JWT-based Authentication
-- **Secure token generation** with configurable expiration
-- **Route protection** for sensitive endpoints
-- **User session management** with refresh tokens
-
-### Security Features
-- **Password hashing** with bcrypt
-- **Input validation** and sanitization
-- **Rate limiting** for API endpoints
-- **CORS configuration** for cross-origin requests
-
-### Protected Routes
-- `/api/query` - Submit medical queries
-- `/api/feedback` - Provide response feedback
-- `/api/history` - Access conversation history
-- `/api/profile` - User profile management
-
----
-
-## 📊 API Documentation
-
-### Authentication Endpoints
-
-#### POST `/auth/register`
-Register a new user account.
-
-```json
-{
-  "email": "user@example.com",
-  "password": "secure_password",
-  "full_name": "John Doe"
-}
-```
-
-#### POST `/auth/login`
-Authenticate user and receive JWT token.
-
-```json
-{
-  "email": "user@example.com",
-  "password": "secure_password"
-}
-```
-
-### Query Endpoints
-
-#### POST `/api/query`
-Submit a medical query to the assistant.
-
-```json
-{
-  "query": "What are the symptoms of hypertension?",
-  "thread_id": "optional_session_id"
-}
-```
-
-#### GET `/api/history`
-Retrieve conversation history for authenticated user.
-
-#### POST `/api/feedback`
-Provide feedback on assistant responses.
-
-```json
-{
-  "response_id": "response_uuid",
-  "rating": "positive",
-  "comment": "Very helpful response!"
-}
-```
-
----
-
-## 🚧 Roadmap
-
-### Phase 1: Core Features ✅
-- [x] LangGraph agent implementation
-- [x] Multi-source RAG integration
-- [x] MongoDB memory system
-- [x] Streamlit UI
-- [x] JWT authentication
-
-### Phase 2: Enhanced Features 🔄
-- [ ] **Document Upload** - PDF medical report analysis
-- [ ] **Voice Input** - Whisper-based speech-to-text
-- [ ] **Advanced Memory** - Long-term user context
-- [ ] **Multi-language Support** - International accessibility
-
-### Phase 3: Professional Features 🔮
-- [ ] **Doctor Dashboard** - Healthcare professional interface
-- [ ] **Patient Analytics** - Health trend analysis
-- [ ] **Clinical Integration** - EHR system connectivity
-- [ ] **Telemedicine Support** - Video consultation features
-
----
-
-## 👨‍💻 Author
-
-<div align="center">
-
-**Hemanth Reddy**
-
-[![GitHub](https://img.shields.io/badge/GitHub-@HemanthReddy--1408-181717?style=flat&logo=github)](https://github.com/HemanthReddy-1408)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?style=flat&logo=linkedin)](https://www.linkedin.com/in/hemanth-reddy-432237333/)
-[![Email](https://img.shields.io/badge/Email-Contact-D14836?style=flat&logo=gmail)](mailto:hemanth984849@gmail.com)
-
-
-</div>
-
----
-
-## 🙏 Acknowledgments
-
-- **LangChain Team** for the excellent framework
-- **Groq** for providing fast LLM inference
-- **Streamlit** for the intuitive UI framework
-- **MongoDB** for reliable document storage
-- **Open Source Community** for continuous inspiration
-
----
-
-## 📞 Support
-
-Having issues or questions? We're here to help!
-
-- 📧 **Email**: [hemanth984849@gmail.com](mailto:hemanth984849@gmail.com)
-
----
-
-<div align="center">
-
-**⭐ Star this repository if you find it helpful!**
-
-
-</div>
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| **[RUNNING.md](RUNNING.md)** | Install, configure, every command, API examples, troubleshooting |
+| **[TECHNICAL.md](TECHNICAL.md)** | Micro-level reference: the request path, measured latencies, per-module detail, the eleven bugs, known gaps |
+| [`docs/spec/`](docs/spec/) | The contract — 14 documents |
+| [`docs/adr/`](docs/adr/) | 8 decision records, each with what was rejected and why |
+
+Reading order for the spec: [§08 The Release Gate](docs/spec/08-release-gate.md)
+is the centrepiece, then [§00 Overview](docs/spec/00-overview.md) for scope and
+**non-goals**, then [§03 Retrieval](docs/spec/03-retrieval.md) for what feeds
+the gate.
+
+## Honesty rules for every number this project publishes
+
+1. State the **sample size** and a **confidence interval**.
+2. Name the **corpus snapshot hash** it was measured against.
+3. If a judge produced it, state its **agreement with human labels** (Cohen's κ)
+   — or brand it `UNCALIBRATED`. Enforced by a model validator, not by convention.
+4. Publish the metrics that came out badly alongside the ones that did not.
