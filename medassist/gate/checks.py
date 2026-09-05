@@ -16,6 +16,7 @@ from medassist.core.ids import ChunkId
 from medassist.core.models import Chunk, Claim, PatientProfile
 from medassist.gate.decisions import CheckOutcome
 from medassist.gate.interactions import TABLE_VERSION, find_conflicts
+from medassist.patient.normalize import normalize
 from medassist.gate.quantities import find_unmatched
 
 
@@ -146,20 +147,31 @@ class RelationalCheck:
     def run(self, claim: Claim, ctx: GateContext) -> CheckOutcome:
         started = time.perf_counter()
         profile = ctx.profile
-        if profile is None or not (profile.medications or profile.conditions):
+        if profile is None or not (profile.medications or profile.conditions or profile.allergies):
             return CheckOutcome(
                 check=self.name, decision=ClaimDecision.RETAIN,
                 reason="no_patient_record", took_ms=_timed(started),
             )
 
-        conflicts = find_conflicts(claim.text, profile.medications, profile.conditions)
+        medications = normalize(profile.medications)
+        conflicts = find_conflicts(
+            claim.text, medications, profile.conditions, profile.allergies
+        )
         if not conflicts:
+            unknown = [m.raw for m in medications if not m.known]
             return CheckOutcome(
-                check=self.name, decision=ClaimDecision.RETAIN,
-                reason="no_conflict", took_ms=_timed(started),
+                check=self.name,
+                decision=ClaimDecision.RETAIN,
+                reason="no_conflict" if not unknown else "no_conflict_partial_coverage",
+                # An unrecognised medication means this check could not reason
+                # about it. Saying so beats implying the list was fully screened.
+                detail=("" if not unknown
+                        else f"not screened against: {', '.join(unknown)}"),
+                severity=Severity.INFO if not unknown else Severity.LOW,
+                took_ms=_timed(started),
             )
 
-        # Most severe row wins, and at equal severity the more restrictive
+        # Most severe finding wins, and at equal severity the more restrictive
         # action wins. Ordering on severity alone let a QUALIFY row that
         # happened to sit earlier in the table mask a REMOVE row of the same
         # severity - a patient on warfarin asking about ibuprofen and leafy
@@ -171,15 +183,15 @@ class RelationalCheck:
         action_rank = {
             ClaimDecision.RETAIN: 0, ClaimDecision.QUALIFY: 1, ClaimDecision.REMOVE: 2,
         }
-        interaction, subject, medication = max(
-            conflicts, key=lambda c: (severity_rank[c[0].severity], action_rank[c[0].action])
+        finding = max(
+            conflicts, key=lambda f: (severity_rank[f.severity], action_rank[f.action])
         )
         return CheckOutcome(
             check=self.name,
-            decision=interaction.action,
-            reason=f"interaction:{interaction.subject.split()[0].lower()}",
-            detail=interaction.caveat,
-            severity=interaction.severity,
+            decision=finding.action,
+            reason=f"{finding.kind}_interaction:{finding.trigger}",
+            detail=finding.caveat,
+            severity=finding.severity,
             took_ms=_timed(started),
         )
 
