@@ -26,3 +26,12 @@ clean:
 
 demo-gate:  ## Live: retrieve, generate claims, and run the release gate
 	.venv/bin/python -m medassist.demo_gate
+
+redteam:  ## Run the adversarial suite
+	.venv/bin/python -m medassist.cli redteam
+
+serve:  ## Run the HTTP API
+	.venv/bin/python -m medassist.cli serve
+
+ui:  ## Streamlit UI with the evidence pane
+	.venv/bin/streamlit run medassist/ui/app.py

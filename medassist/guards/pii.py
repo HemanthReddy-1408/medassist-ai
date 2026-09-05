@@ -20,6 +20,14 @@ PATTERNS: tuple[tuple[str, str], ...] = (
     ("DOB", r"\b(?:DOB|Date of Birth|Born)[:\s]*\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b"),
     ("DATE", r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"),
     ("NAME", r"\b(?:Patient(?:\s+Name)?|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z'.-]+){1,2})\b"),
+    # Conversational self-identification. The labelled form above only catches
+    # a report header; a person typing "my name is Jane Doe" into the chat box
+    # was reaching the provider unredacted. Two capitalised tokens are required
+    # so that "I am Diabetic" at the start of a sentence does not match.
+    # The prefix is matched case-insensitively via a scoped flag; the captured
+    # name is not, because requiring two capitalised tokens is what keeps
+    # "I am diabetic" from being treated as a name.
+    ("NAME", r"\b(?i:my name is|name'?s|i am|i'm|this is)\s+([A-Z][a-z]+\s+[A-Z][a-z'.-]+)\b"),
     ("ADDRESS", r"\b\d{1,5}\s+[A-Z][a-z]+\s+(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr)\b"),
 )
 

@@ -10,7 +10,14 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load_dotenv() -> None:
-    for candidate in (ROOT / ".env", ROOT.parent / "Aegis" / ".env"):
+    """Load this project's own .env, and only this project's.
+
+    An earlier version also read a sibling project's .env as a convenience.
+    That silently pinned a different subject model than the one configured
+    here, and the resulting failures looked like model incompetence rather
+    than a config leak. A standalone repository reads its own settings.
+    """
+    for candidate in (ROOT / ".env",):
         if not candidate.exists():
             continue
         for line in candidate.read_text().splitlines():

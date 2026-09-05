@@ -103,27 +103,105 @@ and stops there.
 
 ## Status — what is actually built
 
-
-This README distinguishes working code from design. The repository it replaced
+Every row below is implemented and tested. The repository this replaced
 advertised "Multi-source RAG" while `pubmed_node` returned the string
 `"Clinical data lookup not implemented yet."` That is the pattern this project
 is organised against.
 
-| Subsystem | Lines | Status |
-|---|---:|---|
-| Domain model — 12 closed enums, typed ULIDs, model-level invariants | 848 | **BUILT**, 26 tests |
-| Model gateway — retries, disk cache, cost, JSON-mode fallback, adaptive budget | 354 | **BUILT**, 21 tests |
-| Corpus — 3 live scrapers, section offsets, content-addressed snapshots | 576 | **BUILT**, 22 tests |
-| Retrieval — chunking, BM25 + dense, RRF, MMR rerank, full trace | 866 | **BUILT**, 29 tests |
-| **Release gate** — 4 checks, cascade, fail-closed, per-check attribution | 1,041 | **BUILT**, 45 tests |
-| Claim-structured generation, handle resolution | 134 | **BUILT** |
-| Capabilities, orchestration, agents | — | **SPECIFIED** — [§04](docs/spec/04-capabilities-and-contracts.md), [§05](docs/spec/05-orchestration.md) |
-| Confidence calibration, risk–coverage | — | **SPECIFIED** — [§06](docs/spec/06-verification-and-confidence.md) |
-| Red-flag triage, policy engine | — | **SPECIFIED** — [§07](docs/spec/07-safety-and-policy.md) |
-| Adversarial cases, decision records | — | **SPECIFIED** — [§09](docs/spec/09-redteam.md), [§10](docs/spec/10-decision-audit.md) |
+| Subsystem | Lines | Tests |
+|---|---:|---:|
+| Domain model — 15 closed enums, monotonic ULIDs, model-level invariants | 858 | 26 |
+| Model gateway — retries, disk cache, cost, JSON fallback, adaptive budget | 354 | 21 |
+| Corpus — 3 live scrapers, section offsets, content-addressed snapshots | 576 | 22 |
+| Retrieval — chunking, BM25 + dense, RRF, MMR rerank, full trace | 866 | 29 |
+| **Release gate** — 6 checks, cascade, fail-closed, per-check attribution | 1,319 | 45 |
+| Patient model — drug classes, brand resolution, interaction rules | 183 | 25 |
+| Clinical guards — triage, injection, PII, deny-by-default policy | 376 | 29 |
+| Capabilities + orchestration — registry, validated DAG, parallel executor | 687 | 30 |
+| Reports — parsing, reference intervals, findings, trends | 404 | 31 |
+| Confidence — six factors, ECE/Brier, risk–coverage, threshold selection | 381 | 36 |
+| **Longitudinal memory** — shelf life, continuity, confirmations | 446 | 27 |
+| Red team — 15 attacks, 10 classes, scored with intervals | 475 | 29 |
+| Decision records + serving — pipeline, API, CLI, UI | 848 | 22 |
 
-**152 tests, 1.6s, no network or API key required.** Live-provider tests are marked and
-excluded by default — a suite needing an API key is a suite that gets skipped.
+**8,274 lines of implementation · 3,367 of tests · 1,733 of specification.**
+**448 tests, 2.4s, no network or API key required.**
+
+---
+
+## Two things worth looking at
+
+### The check that beats the expensive one
+
+```
+claim   "The recommended starting dose is 800 mg twice daily."
+cites   [C1] → "The recommended starting dose is 500 mg twice daily."
+verdict REMOVE — numeric_grounding: 800 mg appears in no cited span   (0.33 ms)
+```
+
+An LLM judge asked "is this consistent?" frequently accepts that — the sentence
+is otherwise identical and both numbers are the same kind of thing. Arithmetic
+does not. Meanwhile `2.5 g` and `2500 mg` *do* match, because units normalise
+before comparison.
+
+### The check nothing else catches
+
+```
+claim    "Increase potassium intake."          ← true, well-cited, grounded
+patient  medications: [warfarin, lisinopril]
+verdict  REMOVE — hyperkalaemia risk with an ACE inhibitor   (3.03 ms)
+```
+
+Every groundedness metric passes that claim, because every one of them stops at
+the corpus. Correctness here is **relational** — it holds between the answer
+and the patient's record. Rules are keyed on drug *classes*, so one grapefruit
+rule covers every CYP3A4 substrate and deliberately does not cover
+rosuvastatin, which is not one.
+
+---
+
+## Memory across visits
+
+> A profile uploads a report showing haemoglobin low at 9.1 g/dL. Five months
+> later, the same profile uploads a lipid panel with no haemoglobin on it.
+
+Forgetting the finding loses something the person is still living with.
+Assuming it still holds means reasoning from a five-month-old value. So:
+
+```
+Hemoglobin: 9.1 (2026-04-08) -> not measured   [unchecked]
+HbA1c:      7.4 (2026-04-08) -> 8.2            [worsening]
+
+Before I use your history, please confirm:
+  - The most recent Hemoglobin I have is 9.1 g/dL (low) as of 2026-04-08,
+    which is now 150 days old. Should I still treat that as current?
+```
+
+Shelf life is a clinical property, not a storage policy — INR expires in 30
+days, a chronic diagnosis in two years. Questions are capped at three and
+ordered by severity, because a system that opens with nine gets none answered.
+Details in [§13](docs/spec/13-longitudinal-memory.md).
+
+---
+
+## Adversarial results
+
+15 attacks across 10 classes, each with a machine-checkable expected behaviour.
+The judge is **scripted to say "supported" for every attack**, so any defence
+that holds was held by deterministic code with no help from the model.
+
+```
+defended 15/15 (100%, 95% CI 80%-100%)
+over-refusals: 0
+```
+
+The interval is doing honest work: 15 cases do not establish much, and a point
+estimate would imply precision it does not have. Two attacks failed on first
+run and both were real bugs — a 10,000-character "claim" released under a
+caveat, and an authority-spoofing payload in a retrieved chunk that produced a
+diagnosis. Both fixed, both now regression tests.
+
+`make redteam` reproduces it.
 
 ---
 
@@ -177,14 +255,17 @@ instructions.
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env          # add a Groq (or OpenAI-compatible) key
-make test                     # 152 tests, offline
+make test                     # 448 tests, offline, no API key
+make redteam                  # the adversarial suite
 make demo                     # live: scrape → index → retrieve, with the trace
 make demo-gate                # live: generate claims → run the gate
+make serve                    # HTTP API on :8000
+make ui                       # Streamlit, with the evidence pane
 ```
 
 ## Documentation
 
-[`docs/spec/`](docs/spec/) — 13 documents. Start with
+[`docs/spec/`](docs/spec/) — 14 documents. Start with
 [§08 The Release Gate](docs/spec/08-release-gate.md), the centrepiece, then
 [§00 Overview](docs/spec/00-overview.md) for scope and **non-goals**, and
 [§03 Retrieval](docs/spec/03-retrieval.md) for what feeds the gate.
