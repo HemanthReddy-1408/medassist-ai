@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from medassist.core.enums import CheckName, ClaimDecision, Severity
+from medassist.core.enums import CheckName, ClaimDecision, Severity, SourceKind
 from medassist.core.ids import ChunkId
 from medassist.core.models import Chunk, Claim, PatientProfile
 from medassist.gate.decisions import CheckOutcome
@@ -200,4 +200,59 @@ class RelationalCheck:
         return TABLE_VERSION
 
 
-DETERMINISTIC_CHECKS: tuple[Check, ...] = (CitationCheck(), NumericCheck(), RelationalCheck())
+class DosageProvenanceCheck:
+    """A numeric dose must come from a regulatory label's dosage section.
+
+    Section membership is carried as character offsets from the corpus layer up
+    precisely so this can be a set-membership test rather than an inference. A
+    dose sourced from a review abstract may describe an off-label study; the
+    label is the legally controlled document.
+    """
+
+    name = CheckName.DOSAGE_PROVENANCE
+
+    #: Sections whose content is dosing guidance.
+    SECTIONS = frozenset({"dosage_and_administration", "dosage_forms_and_strengths"})
+
+    def run(self, claim: Claim, ctx: GateContext) -> CheckOutcome:
+        started = time.perf_counter()
+        if not claim.is_dosage:
+            return CheckOutcome(
+                check=self.name, decision=ClaimDecision.RETAIN,
+                reason="not_a_dosage_claim", took_ms=_timed(started),
+            )
+
+        qualifying = [
+            cid
+            for cid in ctx.resolved(claim)
+            if (chunk := ctx.chunks.get(cid)) is not None
+            and chunk.source is SourceKind.FDA_LABEL
+            and chunk.section in self.SECTIONS
+        ]
+        if qualifying:
+            return CheckOutcome(
+                check=self.name, decision=ClaimDecision.RETAIN, reason="label_sourced",
+                supporting_chunks=qualifying, took_ms=_timed(started),
+            )
+
+        cited = [
+            f"{c.source.value}/{c.section or 'body'}"
+            for cid in ctx.resolved(claim)
+            if (c := ctx.chunks.get(cid)) is not None
+        ]
+        return CheckOutcome(
+            check=self.name,
+            decision=ClaimDecision.REMOVE,
+            reason="dosage_not_label_sourced",
+            detail=(
+                "a dose must cite an FDA label dosage section; this claim cites "
+                + (", ".join(cited) if cited else "nothing")
+            ),
+            severity=Severity.CRITICAL,
+            took_ms=_timed(started),
+        )
+
+
+DETERMINISTIC_CHECKS: tuple[Check, ...] = (
+    CitationCheck(), NumericCheck(), DosageProvenanceCheck(), RelationalCheck(),
+)

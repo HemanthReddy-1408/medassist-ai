@@ -141,6 +141,7 @@ class CheckName(StrEnum):
 
     CITATION_RESOLUTION = "citation_resolution"
     NUMERIC_GROUNDING = "numeric_grounding"
+    DOSAGE_PROVENANCE = "dosage_provenance"
     RELATIONAL_SAFETY = "relational_safety"
     ENTAILMENT = "entailment"
 
