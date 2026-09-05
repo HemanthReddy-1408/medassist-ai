@@ -1,7 +1,9 @@
 # 00 — Overview, Scope, and Non-Goals
 
-**MedAssist X** — a safety-critical, evidence-grounded multi-agent platform, with
-clinical question answering as its first environment.
+**MedAssist X** — serving-time admission control for clinical answers.
+
+A multi-agent system that produces answers, and a **release gate** that decides,
+per request and in-band, whether each one may reach the person who asked.
 
 Status vocabulary used throughout this spec. It is load-bearing: a spec that
 does not distinguish what exists from what is planned is marketing.
@@ -12,6 +14,38 @@ does not distinguish what exists from what is planned is marketing.
 | **PARTIAL** | Implemented, with a named gap stated inline |
 | **SPECIFIED** | Designed here in enough detail to implement; no code yet |
 | **DEFERRED** | Deliberately not being built, with the reason recorded |
+
+---
+
+## 0. What this is not
+
+This is **not an evaluation platform**, and the distinction is load-bearing
+rather than a matter of emphasis.
+
+| | An evaluation platform | **MedAssist X** |
+|---|---|---|
+| Question | *Did this change help?* | *May this answer be released?* |
+| When | Offline, batch, retrospective | **In-band, per request** |
+| Gold labels | Always available | **Never available** |
+| Time | As much as it wants | A latency budget, ~300 ms |
+| Method | Comparative inference across arms | Reference-free verification + risk-calibrated gating |
+| Verdict about | A **change** | A specific **answer, for a specific person** |
+| Domain | Deliberately generic | Irreducibly clinical |
+
+The constraint that makes this a different discipline:
+
+> **At serving time there is no gold label, and there is no second chance.**
+
+Every check in this system is therefore *reference-free* — none may require
+knowing the right answer, because nothing does — and *affordable*, because they
+all run before the user sees anything (§08.4).
+
+Anything measurement-shaped is deliberately out of scope: paired significance
+tests, multiple-comparison correction, cross-arm regression gates, experiment
+tracking, replay. Those answer questions about *changes*, offline, with labels.
+This repository exports decision records in a form such a platform can consume
+(§10.3) and stops there. Building a worse second copy of that machinery would
+be duplicated effort, and would blur the one thing this project is *for*.
 
 ---
 
@@ -42,8 +76,8 @@ Each is enforced somewhere specific, named here so the claim is checkable.
 | 3 | No high-risk output without independent verification | Decision gate (§07.4) |
 | 4 | No confidence number without calibration | `JudgeReliability` invariant (§01.4), ECE/Brier (§06.5) |
 | 5 | No agent autonomy without a bounded budget | `Budget.subdivide` (§05.4) |
-| 6 | No release without regression evaluation | CI gates (§08.6) |
-| 7 | Every discovered failure becomes a permanent test | Red-team → regression loop (§09.4) |
+| 6 | Every refusal is explainable, in the terms that produced it | Decision records (§10.1) |
+| 7 | Every safety component fails closed, never open | Gate degradation (§08.6) |
 
 Law 4 is enforced in the type system rather than by convention:
 `ClaimAssessment` refuses construction if `reliability=CALIBRATED` and `kappa is
@@ -99,6 +133,7 @@ Recorded because an unstated non-goal reads as an oversight.
 
 | Not building | Why |
 |---|---|
+| Comparative evaluation, significance testing, experiment tracking | Questions about *changes*, answered offline with gold labels. A separate concern with a separate tool; see §0. |
 | Synthetic patient simulation at scale | If a model writes both the case and the gold answer, the evaluation measures the generator's self-consistency. 60 hand-labelled cases on a real corpus are worth more than 10,000 synthetic ones. |
 | Arbitrary code-execution sandbox | A correct sandbox (cgroups, seccomp, network namespaces) is its own project. A half-correct one is a vulnerability presented as a feature. |
 | General coding assistant capability | Dilutes the domain story and shares no machinery with the rest. |
@@ -119,12 +154,13 @@ Recorded because an unstated non-goal reads as an oversight.
 | Capability registry, orchestration, agents | — | **SPECIFIED** (§04–§05) |
 | Verification, confidence calibration | — | **SPECIFIED** (§06) |
 | Safety, policy engine, decision gate | — | **SPECIFIED** (§07) |
-| Evaluation harness, statistics, CI gates | — | **SPECIFIED** (§08) |
-| Red team, regression loop | — | **SPECIFIED** (§09) |
-| Observability, replay, experiments | — | **SPECIFIED** (§10) |
+| **Release gate** — cascade, relational safety, fail-closed | — | **SPECIFIED** (§08) — *the centrepiece* |
+| Adversarial cases, fail-closed suite | — | **SPECIFIED** (§09) |
+| Decision records, user-facing explanation | — | **SPECIFIED** (§10) |
 
 ## 7. Reading order
 
-`01` domain model → `03` retrieval → `06` verification are the spine. Read
-those three and the system's actual contribution is clear. `04`–`05` are the
-agent infrastructure, `07`–`09` the reliability plane, `10`–`11` the surfaces.
+`08` the release gate is the centrepiece — read it first. Then `01` domain
+model and `03` retrieval for what feeds it, and `06` verification for the
+checks it runs. `04`–`05` are the agent infrastructure, `07` the clinical
+guards, `09`–`11` the surfaces.

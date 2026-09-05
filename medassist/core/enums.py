@@ -129,3 +129,39 @@ class JudgeReliability(StrEnum):
 
     CALIBRATED = "calibrated"
     UNCALIBRATED = "uncalibrated"
+
+
+class CheckName(StrEnum):
+    """The four gate checks, in cascade order (cheapest first).
+
+    Ordering is the specification, not an optimisation: a claim removed by a
+    deterministic check never reaches the model call, so the expensive stage
+    runs on a shrinking set.
+    """
+
+    CITATION_RESOLUTION = "citation_resolution"
+    NUMERIC_GROUNDING = "numeric_grounding"
+    RELATIONAL_SAFETY = "relational_safety"
+    ENTAILMENT = "entailment"
+
+
+class ClaimDecision(StrEnum):
+    RETAIN = "retain"
+    QUALIFY = "qualify"   # released, with a caveat attached
+    REMOVE = "remove"
+
+
+class ResponseDecision(StrEnum):
+    """ABSTAIN and BLOCK are deliberately distinct.
+
+    Abstain means *we do not know* - the evidence was insufficient, and the
+    honest output is to say so. Block means *we know, and it is not safe to
+    say*. A system that handles ignorance and danger identically is wrong about
+    one of them.
+    """
+
+    RELEASE = "release"
+    RELEASE_WITH_CAVEAT = "release_with_caveat"
+    ABSTAIN = "abstain"
+    BLOCK = "block"
+    ESCALATE = "escalate"

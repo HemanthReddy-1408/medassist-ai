@@ -23,3 +23,6 @@ demo:  ## Live: scrape, index, retrieve, and print the retrieval trace
 
 clean:
 	rm -rf .pytest_cache .ruff_cache **/__pycache__ .cache
+
+demo-gate:  ## Live: retrieve, generate claims, and run the release gate
+	.venv/bin/python -m medassist.demo_gate

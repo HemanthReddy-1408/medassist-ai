@@ -1,34 +1,39 @@
 # 12 — Build Order
 
-Sequenced so that **every stage ends with something measurable**. The
-alternative — building all the infrastructure and evaluating at the end — means
-the first honest number arrives after the last commit, and every design
-decision before it was a guess.
+Sequenced so the **release gate exists early and everything after it is
+measured against a working decision**, rather than arriving last.
 
 | Wave | Delivers | Ends with |
 |---|---|---|
 | **0** ✅ | Domain model, model gateway, 3 live scrapers, snapshots, hybrid retrieval + trace | Retrieval runs end-to-end on a real corpus |
-| **1** | Corpus build CLI, gold set (60 cases), retrieval metrics + **failure attribution** | *First real number:* recall@k with a diagnosis of every miss |
-| **2** | Claim-based generation, citation binding, three verifiers, numeric grounding | Faithfulness and citation validity, with a no-context ablation |
-| **3** | Capability registry, contracts, supervisor, DAG executor, budgets, parallel fan-out | Multi-agent runs with enforced budgets |
-| **4** | Guards: red-flag, dosage, drug–food, injection, PII. Policy engine + decision gate | Safety metrics incl. **over-refusal** |
-| **5** | Report parsing, analyte extraction, reference intervals, lifestyle guidance | The two capabilities that need patient context |
-| **6** | Judge calibration (κ), computed confidence, ECE/Brier/selective accuracy | Confidence that means something |
-| **7** | Red-team suite, regression loop, CI gates | A ratchet |
-| **8** | Replay, experiment engine, reliability report, UI evidence pane | The dashboard, populated with measured numbers |
+| **1** | Claim extraction, the four checks, the cascade, fail-closed degradation | **A working gate**: fabricated citations and ungrounded doses are caught |
+| **2** | Relational safety: interaction table, patient record, drug–food/drug–drug | The check nothing else catches (§08.3) |
+| **3** | Capability registry, contracts, supervisor, DAG executor, budgets | Multi-agent runs with enforced budgets |
+| **4** | Red-flag triage, dosage grounding, policy engine, escalation | Clinical guards, all deterministic |
+| **5** | Report parsing, analytes, reference intervals, lifestyle guidance | The capabilities needing patient context |
+| **6** | Risk–coverage curve, threshold selection, computed confidence | Thresholds chosen from the operating characteristic, not by taste |
+| **7** | Adversarial cases, fail-closed suite, decision records | A gate that is explainable and degrades safely |
+| **8** | API, CLI, UI evidence pane | The surfaces |
 
-## Wave 1 is the important one
+## Why Wave 1 is the gate, not a labelled dataset
 
-It is tempting to build agents next — they are the visible part. But without
-the gold set and retrieval metrics, every subsequent decision (which embedding,
-which reranker weights, whether query expansion earns its cost) is settled by
-taste. Wave 1 costs a day of hand-labelling and makes the following seven waves
-empirical.
+The obvious first move is a gold set and retrieval metrics. It is the wrong one
+here for two reasons.
+
+**It answers the wrong question.** Recall@10 tells you whether retrieval found
+the right chunks. The gate has to decide, with no gold labels at all, whether
+an answer is safe to release. Those are different problems, and only the second
+is this project's.
+
+**It is the boundary with the other tool.** IR metrics, stage attribution and
+paired significance testing belong to an offline evaluation platform. Building
+them here produces a second, worse copy.
+
+So Wave 1 builds the thing that cannot be borrowed: a gate that catches a
+fabricated citation and an ungrounded dose, in-band, in milliseconds.
 
 ## What "done" means
 
-Not "all boxes ticked". Done is:
-
-- Every claim in the README is backed by a number in `artifacts/`.
-- Every number states n, a CI, and its corpus snapshot.
-- The metrics that came out badly are in the report too.
+- Every claim in the README is backed by a decision record in `artifacts/`.
+- The gate fails closed under every degradation in §08.6, with a test each.
+- Refusals name the check that produced them.

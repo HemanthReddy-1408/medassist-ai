@@ -48,7 +48,7 @@ class Settings:
     # grades its own output is not an evaluation, it is a self-assessment.
     subject_model: str = field(
         default_factory=lambda: _env(
-            "MEDASSIST_SUBJECT_MODEL", "AEGIS_SUBJECT_MODEL", default="qwen/qwen3.6-27b"
+            "MEDASSIST_SUBJECT_MODEL", "AEGIS_SUBJECT_MODEL", default="openai/gpt-oss-20b"
         )
     )
     judge_model: str = field(

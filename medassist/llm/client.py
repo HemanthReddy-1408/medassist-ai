@@ -34,6 +34,10 @@ from medassist.core.config import SETTINGS, Settings
 from medassist.core.errors import ConfigError, ProviderError, StructuredOutputError
 from medassist.core.models import Usage
 
+#: Floor for the adaptive max_tokens reduction below; under this a response
+#: is too short to be worth returning, so the error surfaces instead.
+_MIN_MAX_TOKENS = 256
+
 _THINK = re.compile(r"<think>.*?</think>\s*", re.DOTALL | re.IGNORECASE)
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
@@ -172,6 +176,7 @@ class ModelClient:
         max_tokens: int = 1200,
         json_mode: bool = False,
         model: str | None = None,
+        reasoning_effort: str = "",
     ) -> Completion:
         model = model or self.model
         payload: dict[str, Any] = {
@@ -180,6 +185,13 @@ class ModelClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if reasoning_effort:
+            # Reasoning tokens count against the output budget. Where a
+            # provider exposes a dial for them, turning it down is the
+            # difference between fitting the budget and spending all of it
+            # thinking. Accepted values differ per model, so this is a
+            # passthrough rather than an enum.
+            payload["reasoning_effort"] = reasoning_effort
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
 
@@ -194,7 +206,19 @@ class ModelClient:
                     finish_reason=hit.get("finish_reason", "stop"),
                 )
 
-        raw = self._post(payload)
+        try:
+            raw = self._post(payload)
+        except ProviderError as exc:
+            # Reasoning models emit a <think> preamble, which a provider's
+            # strict JSON mode rejects before the model ever finishes. The
+            # content is usually fine - `extract_json` strips the preamble and
+            # recovers the object - so drop the constraint and parse leniently
+            # rather than failing a request the model could answer.
+            if not (json_mode and exc.status == 400 and "json_validate_failed" in str(exc)):
+                raise
+            payload.pop("response_format", None)
+            raw = self._post(payload)
+
         choice = raw["choices"][0]
         text = strip_reasoning(choice["message"].get("content") or "")
         raw_usage = raw.get("usage", {})
@@ -240,6 +264,20 @@ class ModelClient:
                 )
                 if not retryable:
                     raise last
+
+                # A 429 saying the *request* is too large is not congestion and
+                # will never succeed on retry - the account's output-tokens-per-
+                # minute ceiling is below what we asked for. Waiting changes
+                # nothing; asking for less does. Halve and retry immediately.
+                if (
+                    response.status_code == 429
+                    and "too large" in response.text.lower()
+                    and payload.get("max_tokens", 0) > _MIN_MAX_TOKENS
+                ):
+                    payload["max_tokens"] = max(
+                        _MIN_MAX_TOKENS, int(payload["max_tokens"]) // 2
+                    )
+                    continue
                 retry_after = response.headers.get("retry-after")
                 if retry_after:
                     try:
@@ -260,6 +298,7 @@ class ModelClient:
         max_tokens: int = 1200,
         model: str | None = None,
         repair: bool = True,
+        reasoning_effort: str = "",
     ) -> tuple[Any, Usage]:
         """Ask for JSON and get JSON, or raise.
 
@@ -271,9 +310,22 @@ class ModelClient:
         """
         completion = self.complete(
             messages, temperature=temperature, max_tokens=max_tokens,
-            json_mode=True, model=model,
+            json_mode=True, model=model, reasoning_effort=reasoning_effort,
         )
         usage = completion.usage
+
+        # A reasoning model that spends its whole completion budget on the
+        # preamble returns an empty string once the trace is stripped. That is
+        # budget exhaustion, not malformed output, and a repair round-trip
+        # would truncate identically - so name it and stop.
+        if completion.finish_reason == "length" and not completion.text.strip():
+            raise StructuredOutputError(
+                f"{completion.model} produced no output within max_tokens="
+                f"{max_tokens}: the response was truncated, most likely by a "
+                "reasoning preamble. Raise max_tokens, lower reasoning_effort, "
+                "or use a model that does not emit one."
+            )
+
         try:
             return completion.json(), usage
         except StructuredOutputError as first_error:
