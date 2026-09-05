@@ -68,6 +68,12 @@ patient record as an input rather than treating personalization as a prompt
 detail, and why the interaction table is curated, cited data rather than model
 knowledge.
 
+Rules are keyed on drug *classes*, so one grapefruit rule covers every CYP3A4
+substrate — and deliberately does not cover rosuvastatin, which is not one. A
+rule naming simvastatin protects nobody on lovastatin though the mechanism is
+identical, which is the kind of gap that looks like coverage until someone is
+harmed by it.
+
 ### Everything fails closed
 
 | Failure | Behaviour |
@@ -124,39 +130,8 @@ is organised against.
 | Red team — 15 attacks, 10 classes, scored with intervals | 475 | 29 |
 | Decision records + serving — pipeline, API, CLI, UI | 848 | 22 |
 
-**8,274 lines of implementation · 3,367 of tests · 1,733 of specification.**
+**8,274 lines of implementation · 3,367 of tests · 1,751 of specification.**
 **448 tests, 2.4s, no network or API key required.**
-
----
-
-## Two things worth looking at
-
-### The check that beats the expensive one
-
-```
-claim   "The recommended starting dose is 800 mg twice daily."
-cites   [C1] → "The recommended starting dose is 500 mg twice daily."
-verdict REMOVE — numeric_grounding: 800 mg appears in no cited span   (0.33 ms)
-```
-
-An LLM judge asked "is this consistent?" frequently accepts that — the sentence
-is otherwise identical and both numbers are the same kind of thing. Arithmetic
-does not. Meanwhile `2.5 g` and `2500 mg` *do* match, because units normalise
-before comparison.
-
-### The check nothing else catches
-
-```
-claim    "Increase potassium intake."          ← true, well-cited, grounded
-patient  medications: [warfarin, lisinopril]
-verdict  REMOVE — hyperkalaemia risk with an ACE inhibitor   (3.03 ms)
-```
-
-Every groundedness metric passes that claim, because every one of them stops at
-the corpus. Correctness here is **relational** — it holds between the answer
-and the patient's record. Rules are keyed on drug *classes*, so one grapefruit
-rule covers every CYP3A4 substrate and deliberately does not cover
-rosuvastatin, which is not one.
 
 ---
 
@@ -226,26 +201,6 @@ acceptable.
 Snapshots are **content-addressed and re-verified on read.** A metric is
 meaningless without the corpus it was measured against — "recall rose from 0.61
 to 0.74" may only record that someone re-scraped PubMed.
-
----
-
-## The guard that motivates the architecture
-
-```
-"I'm on warfarin. What should I eat?"
-      ↓
-"Leafy greens are an excellent source of vitamins."
-```
-
-That claim is **perfectly grounded** — leafy greens are healthy, and the corpus
-says so. It is also a vitamin-K interaction with warfarin.
-
-No groundedness metric catches this. No faithfulness score catches this.
-Correctness here is *relational* — the answer is wrong for **this person** —
-and only an explicit cross-check against the patient's own medication list
-sees it. That is why `lifestyle_guidance` is a MEDIUM-risk capability with a
-dedicated guard, and why guards are deterministic code rather than prompt
-instructions.
 
 ---
 
