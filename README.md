@@ -220,13 +220,17 @@ make ui                       # Streamlit, with the evidence pane
 
 ## Documentation
 
-[`docs/spec/`](docs/spec/) — 14 documents. Start with
-[§08 The Release Gate](docs/spec/08-release-gate.md), the centrepiece, then
-[§00 Overview](docs/spec/00-overview.md) for scope and **non-goals**, and
-[§03 Retrieval](docs/spec/03-retrieval.md) for what feeds the gate.
+| Document | What it covers |
+|---|---|
+| **[RUNNING.md](RUNNING.md)** | Install, configure, every command, API examples, troubleshooting |
+| **[TECHNICAL.md](TECHNICAL.md)** | Micro-level reference: the request path, measured latencies, per-module detail, the eleven bugs, known gaps |
+| [`docs/spec/`](docs/spec/) | The contract — 14 documents |
+| [`docs/adr/`](docs/adr/) | 8 decision records, each with what was rejected and why |
 
-[`docs/adr/`](docs/adr/) — 8 decision records, each with what was rejected and
-why.
+Reading order for the spec: [§08 The Release Gate](docs/spec/08-release-gate.md)
+is the centrepiece, then [§00 Overview](docs/spec/00-overview.md) for scope and
+**non-goals**, then [§03 Retrieval](docs/spec/03-retrieval.md) for what feeds
+the gate.
 
 ## Honesty rules for every number this project publishes
 
