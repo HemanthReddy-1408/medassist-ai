@@ -1,39 +1,57 @@
-# 12 — Build Order
+# 12 — Build Status
 
-Sequenced so the **release gate exists early and everything after it is
-measured against a working decision**, rather than arriving last.
+All nine waves are implemented. Sequenced so the release gate existed early and
+everything after it was measured against a working decision, rather than the
+first honest signal arriving after the last commit.
 
-| Wave | Delivers | Ends with |
+| Wave | Delivers | Status |
 |---|---|---|
-| **0** ✅ | Domain model, model gateway, 3 live scrapers, snapshots, hybrid retrieval + trace | Retrieval runs end-to-end on a real corpus |
-| **1** | Claim extraction, the four checks, the cascade, fail-closed degradation | **A working gate**: fabricated citations and ungrounded doses are caught |
-| **2** | Relational safety: interaction table, patient record, drug–food/drug–drug | The check nothing else catches (§08.3) |
-| **3** | Capability registry, contracts, supervisor, DAG executor, budgets | Multi-agent runs with enforced budgets |
-| **4** | Red-flag triage, dosage grounding, policy engine, escalation | Clinical guards, all deterministic |
-| **5** | Report parsing, analytes, reference intervals, lifestyle guidance | The capabilities needing patient context |
-| **6** | Risk–coverage curve, threshold selection, computed confidence | Thresholds chosen from the operating characteristic, not by taste |
-| **7** | Adversarial cases, fail-closed suite, decision records | A gate that is explainable and degrades safely |
-| **8** | API, CLI, UI evidence pane | The surfaces |
+| **0** | Domain model, model gateway, 3 live scrapers, snapshots, hybrid retrieval + trace | ✅ |
+| **1** | Claim extraction, the checks, the cascade, fail-closed degradation | ✅ |
+| **2** | Relational safety: drug classes, food/drug/allergy rules, patient record | ✅ |
+| **3** | Capability registry, validated plan DAG, parallel executor, budgets | ✅ |
+| **4** | Red-flag triage, dosage provenance, injection detection, policy engine | ✅ |
+| **5** | Report parsing, reference intervals, findings, trends | ✅ |
+| **6** | Computed confidence, ECE/Brier, risk–coverage, threshold selection | ✅ |
+| **7** | Adversarial suite, decision records, per-check attribution | ✅ |
+| **8** | End-to-end pipeline, HTTP API, CLI, Streamlit evidence pane | ✅ |
+| **9** | Longitudinal memory, shelf life, continuity, confirmations | ✅ |
 
-## Why Wave 1 is the gate, not a labelled dataset
+## What the waves actually found
 
-The obvious first move is a gold set and retrieval metrics. It is the wrong one
-here for two reasons.
+Nine bugs were found by tests written against code already believed correct.
+Recorded because the list is more informative than the feature list:
 
-**It answers the wrong question.** Recall@10 tells you whether retrieval found
-the right chunks. The gate has to decide, with no gold labels at all, whether
-an answer is safe to release. Those are different problems, and only the second
-is this project's.
+| Bug | Consequence had it shipped |
+|---|---|
+| Sections under 120 chars dropped from the index | `contraindications` routinely vanished — `NOT_INDEXED` on safety queries |
+| ULIDs not monotonic within a millisecond | ~100 chunk ids per document sorted arbitrarily |
+| QUALIFY interaction row masked a REMOVE of equal severity | Warfarin patient kept the bleeding advice, got the dietary caveat |
+| 15-claim judge batch returned 14 verdicts | Correct abstain, but on a sound answer |
+| Strict JSON mode rejects reasoning models | Every structured call failed |
+| 429 for request *size* retried unchanged | Retry loop that could never succeed |
+| Lab flag column `NORMAL` unmatched | The whole analyte silently dropped |
+| `at_coverage` took max over noisy thresholds | Random confidence reported as useful |
+| Config read a sibling project's `.env` | Wrong model, failures looked like incompetence |
 
-**It is the boundary with the other tool.** IR metrics, stage attribution and
-paired significance testing belong to an offline evaluation platform. Building
-them here produces a second, worse copy.
+Two more came from the adversarial suite rather than unit tests: an
+unbounded-length claim released under a caveat, and an authority-spoofing
+payload in a retrieved chunk producing a diagnosis.
 
-So Wave 1 builds the thing that cannot be borrowed: a gate that catches a
-fabricated citation and an ungrounded dose, in-band, in milliseconds.
+## Deliberately not built
 
-## What "done" means
+Recorded in §00.5 with reasons, and unchanged: comparative evaluation and
+significance testing (a different tool's job, §00 §0), synthetic patient
+simulation at scale, an arbitrary code-execution sandbox, a graph database,
+video/audio modality.
 
-- Every claim in the README is backed by a decision record in `artifacts/`.
+One gap inside a built subsystem is named rather than hidden: `CONTRADICTED`
+reconciliation between a user statement and a report (§13.7) is specified and
+unimplemented.
+
+## What "done" means here
+
+- Every claim in the README is backed by output the repository can reproduce.
+- Every published rate carries n and a Wilson interval.
 - The gate fails closed under every degradation in §08.6, with a test each.
 - Refusals name the check that produced them.
