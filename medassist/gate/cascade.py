@@ -211,6 +211,14 @@ class ReleaseGate:
                 return ResponseDecision.BLOCK, GateReason(
                     rule="relational_critical", detail=worst.detail, severity=Severity.CRITICAL,
                 )
+            if worst.check is CheckName.CONTEXT_INTEGRITY:
+                # The retrieved corpus is an untrusted channel. If a cited
+                # source carries an instruction payload, the surrounding
+                # answer was assembled from compromised context and none of
+                # it should be released on the strength of the rest.
+                return ResponseDecision.BLOCK, GateReason(
+                    rule="context_compromised", detail=worst.detail, severity=Severity.CRITICAL,
+                )
 
         total = len(judgements)
         kept = sum(1 for j in judgements if j.decision is not ClaimDecision.REMOVE)

@@ -139,6 +139,8 @@ class CheckName(StrEnum):
     runs on a shrinking set.
     """
 
+    STRUCTURAL = "structural"
+    CONTEXT_INTEGRITY = "context_integrity"
     CITATION_RESOLUTION = "citation_resolution"
     NUMERIC_GROUNDING = "numeric_grounding"
     DOSAGE_PROVENANCE = "dosage_provenance"
